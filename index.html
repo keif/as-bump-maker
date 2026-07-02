@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bump Maker</title>
+
+  <link rel="icon" href="./assets/favicon.ico" sizes="any">
+
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="dot"></div>
+      <div class="title">[AS]</div>
+      <div class="subtitle">Bump Maker</div>
+    </div>
+
+    <div class="actions">
+      <button id="btnPreview" class="btn">Preview</button>
+      <button id="btnStop" class="btn secondary" disabled>Stop</button>
+      <button id="btnExport" class="btn primary">Export MP4</button>
+    </div>
+  </header>
+
+  <main class="layoutTop">
+    <!-- PREVIEW TOP -->
+    <section class="stage stageTop">
+      <div class="stageHeader">
+        <div class="stageTitle">Preview</div>
+        <div class="stageMeta"><span id="metaDuration">0.00s</span></div>
+      </div>
+
+      <div class="mediaFrame">
+        <div class="canvasWrap canvasWrapTop" id="previewFrame">
+          <canvas id="canvas" width="1920" height="1080"></canvas>
+
+          <div class="statusOverlay">
+            <div id="statusLine">Ready.</div>
+            <div class="progressWrap"><div id="progressBar"></div></div>
+          </div>
+
+          <video id="resultVideo" controls style="display:none;"></video>
+          <a id="downloadLink" download="bump.mp4" style="display:none;">Download</a>
+        </div>
+
+        <pre id="log" class="log" style="display:none;"></pre>
+      </div>
+    </section>
+
+    <!-- CONTROLS BOTTOM -->
+    <section class="panel panelBottom">
+      <div class="panelGrid">
+        <!-- CARDS -->
+        <div class="panelCol">
+          <div class="cardsHeaderRow">
+            <h2>Cards</h2>
+            <div class="row">
+              <button id="btnAdd" class="btn small">+ Add card</button>
+              <button id="btnLoadExample" class="btn small secondary">Load example</button>
+              <button id="btnClear" class="btn small secondary">Clear</button>
+            </div>
+          </div>
+
+          <div class="hint" style="margin-bottom:10px;">
+            Drag cards to reorder.
+          </div>
+
+          <div id="cards"></div>
+        </div>
+
+        <!-- SETTINGS -->
+        <div class="panelCol">
+          <div class="twoUp">
+            <div class="box">
+              <h2>Audio (optional)</h2>
+              <input id="audioFile" type="file" accept="audio/*" />
+              <div class="hint">
+                Upload a song/beat. Export will mux it into the MP4 (trimmed to bump length).
+              </div>
+              <audio id="audioPlayer" controls></audio>
+            </div>
+
+            <div class="box">
+              <h2>Background (optional)</h2>
+              <label>
+                (image/video)
+                <input id="bgFile" type="file" accept="image/*,video/*" />
+              </label>
+
+              <div class="grid2" style="margin-top:10px;">
+                <label>
+                  Fit
+                  <select id="bgFit">
+                    <option value="cover" selected>Cover</option>
+                    <option value="contain">Contain</option>
+                  </select>
+                </label>
+
+                <label>
+                  Opacity (0–100%)
+                  <input id="bgDim" type="number" min="0" max="100" value="0" />
+                </label>
+
+                <label class="check">
+                  <input id="bgMutePreview" type="checkbox" checked />
+                  <span>Mute bg video (preview)</span>
+                </label>
+
+                <label class="check">
+                  <input id="bgLoop" type="checkbox" checked />
+                  <span>Loop bg video</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <hr />
+
+          <h2>Look</h2>
+          <div class="grid2">
+            <label>
+              Resolution
+              <select id="resolution">
+                <option value="1920x1080" selected>1920×1080 (1080p)</option>
+                <option value="1280x720">1280×720 (720p)</option>
+                <option value="854x480">854×480 (480p)</option>
+              </select>
+            </label>
+
+            <label>
+              FPS
+              <select id="fps">
+                <option value="24">24</option>
+                <option value="30" selected>30</option>
+                <option value="60">60</option>
+              </select>
+            </label>
+
+            <label>
+              Font family
+              <input id="fontFamily" type="text" value="Helvetica Neue, Arial, sans-serif" />
+            </label>
+
+            <label>
+              Font size (px)
+              <input id="fontSize" type="number" min="12" max="200" value="96" />
+            </label>
+
+            <label class="check">
+              <input id="enableFade" type="checkbox" />
+              <span>Quick fade (0.18s)</span>
+            </label>
+
+            <label class="check">
+              <input id="enableGrain" type="checkbox" />
+              <span>Light grain</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

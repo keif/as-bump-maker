@@ -68,6 +68,10 @@ docker run --rm -p 8080:80 \
 - **FFmpeg WASM assets** are loaded from the jsDelivr CDN at runtime (see the `import` at the top of `app.js`), not bundled into the image. First page load will fetch ~30MB of WASM.
 - The server is intentionally minimal — no proxying, no TLS, no gzip. If you deploy this behind a reverse proxy, make sure the proxy preserves (or re-adds) the COOP/COEP/CORP headers or the app will silently fall back to a broken state.
 
+## Contributing
+
+Direct pushes to `main` are blocked; changes go through PRs. The CI Docker build must pass, and every PR must go through a local `/codex review` gate before merge. Details in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

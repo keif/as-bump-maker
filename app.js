@@ -20,8 +20,16 @@ const btnClear = $('#btnClear');
 
 const audioFile = $('#audioFile');
 const audioPlayer = $('#audioPlayer');
+const audioUrl = $('#audioUrl');
+const btnLoadUrl = $('#btnLoadUrl');
+const audioUrlError = $('#audioUrlError');
 const downloadLink = $('#downloadLink');
 const resultVideo = $('#resultVideo');
+
+// Holds the currently-selected audio source, whether from file upload or URL fetch.
+// Read here (not audioFile.files?.[0]) at export time so URL-loaded audio muxes correctly.
+let currentAudioFile = null;
+let currentAudioObjectUrl = null;
 
 const bgFile = $('#bgFile');
 const bgFitEl = $('#bgFit');
@@ -398,11 +406,107 @@ btnPreview.addEventListener('click', () => {
 
 btnStop.addEventListener('click', stopPreview);
 
-audioFile.addEventListener('change', async (e) => {
-  const file = e.target.files?.[0];
-  if (!file) { audioPlayer.removeAttribute('src'); audioPlayer.load(); return; }
-  audioPlayer.src = URL.createObjectURL(file);
-  audioPlayer.load();
+function clearAudioUrlError() {
+  audioUrlError.textContent = '';
+  audioUrlError.classList.remove('visible');
+}
+
+function showAudioUrlError(msg) {
+  audioUrlError.textContent = msg;
+  audioUrlError.classList.add('visible');
+}
+
+function setCurrentAudio(file) {
+  if (currentAudioObjectUrl) {
+    URL.revokeObjectURL(currentAudioObjectUrl);
+    currentAudioObjectUrl = null;
+  }
+  currentAudioFile = file;
+  if (file) {
+    currentAudioObjectUrl = URL.createObjectURL(file);
+    audioPlayer.src = currentAudioObjectUrl;
+    audioPlayer.load();
+  } else {
+    audioPlayer.removeAttribute('src');
+    audioPlayer.load();
+  }
+}
+
+audioFile.addEventListener('change', (e) => {
+  const file = e.target.files?.[0] || null;
+  clearAudioUrlError();
+  if (audioUrl) audioUrl.value = '';
+  setCurrentAudio(file);
+});
+
+async function loadAudioFromUrl(rawUrl) {
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error('That doesn’t look like a valid URL.');
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('Only http:// and https:// URLs are supported.');
+  }
+
+  let res;
+  try {
+    res = await fetch(url.href, { mode: 'cors' });
+  } catch (err) {
+    // Network layer failure (DNS, offline) OR a CORS/COEP block that prevents any response.
+    throw new Error('Couldn’t reach that URL. The source may block cross-origin requests — try downloading and uploading instead.');
+  }
+
+  if (!res.ok) {
+    throw new Error(`Server returned ${res.status} ${res.statusText || ''}`.trim());
+  }
+
+  const blob = await res.blob();
+  const type = blob.type || res.headers.get('content-type') || '';
+  if (!type.startsWith('audio/') && !type.startsWith('video/')) {
+    throw new Error(`That URL doesn’t look like audio (got ${type || 'unknown type'}).`);
+  }
+
+  // Derive a filename from the URL path so ffmpeg gets a sensible extension.
+  let name = 'audio';
+  try {
+    const last = url.pathname.split('/').filter(Boolean).pop();
+    if (last) name = decodeURIComponent(last);
+  } catch {
+    // fall through
+  }
+  return new File([blob], name, { type });
+}
+
+async function handleLoadUrlClick() {
+  const raw = (audioUrl?.value || '').trim();
+  if (!raw) {
+    showAudioUrlError('Paste an audio URL first.');
+    return;
+  }
+  clearAudioUrlError();
+  btnLoadUrl.disabled = true;
+  const prevLabel = btnLoadUrl.textContent;
+  btnLoadUrl.textContent = 'Loading…';
+  try {
+    const file = await loadAudioFromUrl(raw);
+    audioFile.value = '';
+    setCurrentAudio(file);
+  } catch (err) {
+    showAudioUrlError(err?.message || 'Failed to load that URL.');
+  } finally {
+    btnLoadUrl.disabled = false;
+    btnLoadUrl.textContent = prevLabel;
+  }
+}
+
+btnLoadUrl?.addEventListener('click', handleLoadUrlClick);
+audioUrl?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    handleLoadUrlClick();
+  }
 });
 
 // Background upload
@@ -842,7 +946,7 @@ btnExport.addEventListener('click', async () => {
   btnStop.disabled = true;
 
   try {
-    const audio = audioFile.files?.[0] || null;
+    const audio = currentAudioFile;
 
     const mp4Mime = pickMp4Mime();
     const canEmbedAudio = !!(audio && typeof audioPlayer.captureStream === 'function');

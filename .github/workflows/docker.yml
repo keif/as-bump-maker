@@ -50,7 +50,7 @@ jobs:
           curl -sSf -o /dev/null http://localhost:8080/style.css
           headers=$(curl -sI http://localhost:8080/)
           echo "$headers" | grep -qi 'Cross-Origin-Opener-Policy: same-origin'
-          echo "$headers" | grep -qi 'Cross-Origin-Embedder-Policy: require-corp'
+          echo "$headers" | grep -qi 'Cross-Origin-Embedder-Policy: credentialless'
           docker rm -f smoke
 
       - name: Log in to GHCR

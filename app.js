@@ -433,13 +433,20 @@ function setCurrentAudio(file) {
 }
 
 audioFile.addEventListener('change', (e) => {
+  cancelInFlightUrlLoad();
   const file = e.target.files?.[0] || null;
   clearAudioUrlError();
   if (audioUrl) audioUrl.value = '';
   setCurrentAudio(file);
 });
 
-async function loadAudioFromUrl(rawUrl) {
+audioUrl?.addEventListener('input', () => {
+  // User is editing the URL — invalidate any in-flight load so its resolution
+  // can't overwrite whatever they're now typing / about to submit.
+  if (urlLoadInFlight) cancelInFlightUrlLoad();
+});
+
+async function loadAudioFromUrl(rawUrl, signal) {
   let url;
   try {
     url = new URL(rawUrl);
@@ -452,8 +459,9 @@ async function loadAudioFromUrl(rawUrl) {
 
   let res;
   try {
-    res = await fetch(url.href, { mode: 'cors' });
+    res = await fetch(url.href, { mode: 'cors', signal });
   } catch (err) {
+    if (err?.name === 'AbortError') throw err;
     // Network layer failure (DNS, offline) OR a CORS/COEP block that prevents any response.
     throw new Error('Couldn’t reach that URL. The source may block cross-origin requests — try downloading and uploading instead.');
   }
@@ -465,6 +473,14 @@ async function loadAudioFromUrl(rawUrl) {
   const blob = await res.blob();
   const type = blob.type || res.headers.get('content-type') || '';
 
+  // Explicitly reject video responses: even audio-only playback works, but the
+  // ffmpeg mux fallback would then have two video streams and stream-map
+  // heuristics could pick the wrong one. Users with a video track should
+  // extract the audio locally and upload that.
+  if (type.startsWith('video/')) {
+    throw new Error('That URL points to a video, not audio. Extract the audio track and upload it instead.');
+  }
+
   // Derive a filename from the URL path so ffmpeg gets a sensible extension.
   let name = 'audio';
   try {
@@ -475,12 +491,12 @@ async function loadAudioFromUrl(rawUrl) {
   }
 
   // Content-Type is unreliable — many CDNs serve audio as application/octet-stream
-  // or omit the header entirely. Accept if MIME is audio/video OR the URL path
-  // has a known audio extension. ffmpeg / the <audio> element will reject
-  // anything that isn't actually decodable.
-  const looksLikeAudio = /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus|weba|webm)(\?|#|$)/i.test(url.pathname);
-  const mimeIsMedia = type.startsWith('audio/') || type.startsWith('video/');
-  if (!mimeIsMedia && !looksLikeAudio) {
+  // or omit the header entirely. Accept if MIME is audio OR the URL path has a
+  // known audio-only extension. `.webm` and `.mp4` are omitted because they are
+  // typically video containers; `.weba` covers audio-only WebM.
+  const looksLikeAudio = /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus|weba)(\?|#|$)/i.test(url.pathname);
+  const mimeIsAudio = type.startsWith('audio/');
+  if (!mimeIsAudio && !looksLikeAudio) {
     throw new Error(`That URL doesn’t look like audio (got ${type || 'unknown type'}).`);
   }
 
@@ -488,6 +504,17 @@ async function loadAudioFromUrl(rawUrl) {
 }
 
 let urlLoadInFlight = false;
+let urlLoadAbort = null;
+
+// Cancel any in-flight URL load. Called when the user changes source another way
+// (picks a file, edits the URL) so the older fetch can't resolve and clobber the
+// newer selection.
+function cancelInFlightUrlLoad() {
+  if (urlLoadAbort) {
+    urlLoadAbort.abort();
+    urlLoadAbort = null;
+  }
+}
 
 async function handleLoadUrlClick() {
   if (urlLoadInFlight) return;
@@ -497,20 +524,29 @@ async function handleLoadUrlClick() {
     return;
   }
   urlLoadInFlight = true;
+  urlLoadAbort = new AbortController();
+  const controller = urlLoadAbort;
   clearAudioUrlError();
   btnLoadUrl.disabled = true;
   const prevLabel = btnLoadUrl.textContent;
   btnLoadUrl.textContent = 'Loading…';
   try {
-    const file = await loadAudioFromUrl(raw);
+    const file = await loadAudioFromUrl(raw, controller.signal);
+    if (controller.signal.aborted) return; // superseded
     audioFile.value = '';
     setCurrentAudio(file);
   } catch (err) {
+    if (err?.name === 'AbortError' || controller.signal.aborted) return; // superseded
     showAudioUrlError(err?.message || 'Failed to load that URL.');
   } finally {
-    urlLoadInFlight = false;
-    btnLoadUrl.disabled = false;
-    btnLoadUrl.textContent = prevLabel;
+    // Only reset UI state if THIS load is still the current one; otherwise
+    // a newer load already owns the button/spinner state.
+    if (urlLoadAbort === controller) {
+      urlLoadInFlight = false;
+      urlLoadAbort = null;
+      btnLoadUrl.disabled = false;
+      btnLoadUrl.textContent = prevLabel;
+    }
   }
 }
 

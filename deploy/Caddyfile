@@ -1,0 +1,16 @@
+# Replace {{DOMAIN}} with the hostname you own (e.g. bump.example.com) before
+# the first `docker compose up -d`. Auto-TLS via Let's Encrypt requires a real
+# DNS A record pointing at this box's public IP, propagated globally, BEFORE
+# you start the stack — otherwise the first ACME challenge fails and Caddy
+# retries with backoff.
+#
+# See ./README.md for the full runbook including DNS + firewall notes.
+
+{{DOMAIN}} {
+	encode gzip zstd
+
+	# Upstream nginx (the app container) sets COOP / COEP / CORP + Cache-Control.
+	# reverse_proxy passes response headers through unchanged, so cross-origin
+	# isolation (required for SharedArrayBuffer / ffmpeg-wasm) is preserved.
+	reverse_proxy web:80
+}

@@ -20,8 +20,16 @@ const btnClear = $('#btnClear');
 
 const audioFile = $('#audioFile');
 const audioPlayer = $('#audioPlayer');
+const audioUrl = $('#audioUrl');
+const btnLoadUrl = $('#btnLoadUrl');
+const audioUrlError = $('#audioUrlError');
 const downloadLink = $('#downloadLink');
 const resultVideo = $('#resultVideo');
+
+// Holds the currently-selected audio source, whether from file upload or URL fetch.
+// Read here (not audioFile.files?.[0]) at export time so URL-loaded audio muxes correctly.
+let currentAudioFile = null;
+let currentAudioObjectUrl = null;
 
 const bgFile = $('#bgFile');
 const bgFitEl = $('#bgFit');
@@ -398,11 +406,167 @@ btnPreview.addEventListener('click', () => {
 
 btnStop.addEventListener('click', stopPreview);
 
-audioFile.addEventListener('change', async (e) => {
-  const file = e.target.files?.[0];
-  if (!file) { audioPlayer.removeAttribute('src'); audioPlayer.load(); return; }
-  audioPlayer.src = URL.createObjectURL(file);
-  audioPlayer.load();
+function clearAudioUrlError() {
+  audioUrlError.textContent = '';
+  audioUrlError.classList.remove('visible');
+}
+
+function showAudioUrlError(msg) {
+  audioUrlError.textContent = msg;
+  audioUrlError.classList.add('visible');
+}
+
+function setCurrentAudio(file) {
+  if (currentAudioObjectUrl) {
+    URL.revokeObjectURL(currentAudioObjectUrl);
+    currentAudioObjectUrl = null;
+  }
+  currentAudioFile = file;
+  if (file) {
+    currentAudioObjectUrl = URL.createObjectURL(file);
+    audioPlayer.src = currentAudioObjectUrl;
+    audioPlayer.load();
+  } else {
+    audioPlayer.removeAttribute('src');
+    audioPlayer.load();
+  }
+}
+
+audioFile.addEventListener('change', (e) => {
+  cancelInFlightUrlLoad();
+  const file = e.target.files?.[0] || null;
+  clearAudioUrlError();
+  if (audioUrl) audioUrl.value = '';
+  setCurrentAudio(file);
+});
+
+audioUrl?.addEventListener('input', () => {
+  // User is editing the URL — invalidate any in-flight load so its resolution
+  // can't overwrite whatever they're now typing / about to submit.
+  if (urlLoadInFlight) cancelInFlightUrlLoad();
+});
+
+async function loadAudioFromUrl(rawUrl, signal) {
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error('That doesn’t look like a valid URL.');
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('Only http:// and https:// URLs are supported.');
+  }
+
+  let res;
+  try {
+    res = await fetch(url.href, { mode: 'cors', signal });
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err;
+    // Network layer failure (DNS, offline) OR a CORS/COEP block that prevents any response.
+    throw new Error('Couldn’t reach that URL. The source may block cross-origin requests — try downloading and uploading instead.');
+  }
+
+  if (!res.ok) {
+    throw new Error(`Server returned ${res.status} ${res.statusText || ''}`.trim());
+  }
+
+  const blob = await res.blob();
+  const type = blob.type || res.headers.get('content-type') || '';
+
+  // Explicitly reject video responses: even audio-only playback works, but the
+  // ffmpeg mux fallback would then have two video streams and stream-map
+  // heuristics could pick the wrong one. Users with a video track should
+  // extract the audio locally and upload that.
+  if (type.startsWith('video/')) {
+    throw new Error('That URL points to a video, not audio. Extract the audio track and upload it instead.');
+  }
+
+  // Derive a filename from the URL path so ffmpeg gets a sensible extension.
+  let name = 'audio';
+  try {
+    const last = url.pathname.split('/').filter(Boolean).pop();
+    if (last) name = decodeURIComponent(last);
+  } catch {
+    // fall through
+  }
+
+  // Content-Type is unreliable — many CDNs serve audio as application/octet-stream
+  // or omit the header entirely. Accept if MIME is audio OR the URL path has a
+  // known audio-only extension. `.webm` and `.mp4` are omitted because they are
+  // typically video containers; `.weba` covers audio-only WebM.
+  const looksLikeAudio = /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus|weba)(\?|#|$)/i.test(url.pathname);
+  const mimeIsAudio = type.startsWith('audio/');
+  if (!mimeIsAudio && !looksLikeAudio) {
+    throw new Error(`That URL doesn’t look like audio (got ${type || 'unknown type'}).`);
+  }
+
+  return new File([blob], name, { type });
+}
+
+let urlLoadInFlight = false;
+let urlLoadAbort = null;
+
+const URL_LOAD_BUTTON_LABEL = 'Load';
+
+// Cancel any in-flight URL load. Called when the user changes source another way
+// (picks a file, edits the URL) so the older fetch can't resolve and clobber the
+// newer selection. Also resets the loader UI so the button doesn't stay stuck
+// in the "Loading…" / disabled state — the awaited handler will see the null
+// urlLoadAbort and skip its own reset.
+function cancelInFlightUrlLoad() {
+  if (urlLoadAbort) {
+    urlLoadAbort.abort();
+    urlLoadAbort = null;
+  }
+  if (urlLoadInFlight) {
+    urlLoadInFlight = false;
+    if (btnLoadUrl) {
+      btnLoadUrl.disabled = false;
+      btnLoadUrl.textContent = URL_LOAD_BUTTON_LABEL;
+    }
+  }
+}
+
+async function handleLoadUrlClick() {
+  if (urlLoadInFlight) return;
+  const raw = (audioUrl?.value || '').trim();
+  if (!raw) {
+    showAudioUrlError('Paste an audio URL first.');
+    return;
+  }
+  urlLoadInFlight = true;
+  urlLoadAbort = new AbortController();
+  const controller = urlLoadAbort;
+  clearAudioUrlError();
+  btnLoadUrl.disabled = true;
+  btnLoadUrl.textContent = 'Loading…';
+  try {
+    const file = await loadAudioFromUrl(raw, controller.signal);
+    if (controller.signal.aborted) return; // superseded
+    audioFile.value = '';
+    setCurrentAudio(file);
+  } catch (err) {
+    if (err?.name === 'AbortError' || controller.signal.aborted) return; // superseded
+    showAudioUrlError(err?.message || 'Failed to load that URL.');
+  } finally {
+    // Only reset UI state if THIS load is still the current one. If a canceller
+    // set urlLoadAbort to null, that canceller already reset the UI — bail here
+    // to avoid double-reset. If a newer load already owns the state, don't stomp.
+    if (urlLoadAbort === controller) {
+      urlLoadInFlight = false;
+      urlLoadAbort = null;
+      btnLoadUrl.disabled = false;
+      btnLoadUrl.textContent = URL_LOAD_BUTTON_LABEL;
+    }
+  }
+}
+
+btnLoadUrl?.addEventListener('click', handleLoadUrlClick);
+audioUrl?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    handleLoadUrlClick();
+  }
 });
 
 // Background upload
@@ -842,7 +1006,7 @@ btnExport.addEventListener('click', async () => {
   btnStop.disabled = true;
 
   try {
-    const audio = audioFile.files?.[0] || null;
+    const audio = currentAudioFile;
 
     const mp4Mime = pickMp4Mime();
     const canEmbedAudio = !!(audio && typeof audioPlayer.captureStream === 'function');

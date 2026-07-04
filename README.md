@@ -9,6 +9,8 @@ A browser-based tool for building short "bump" videos — drop in an audio track
 
 The app requires `SharedArrayBuffer` for FFmpeg's multi-threaded WASM build, which is why nginx sets the COOP/COEP headers in `default.conf`. Loading `index.html` directly from disk (`file://`) will **not** work — you need to serve it over HTTP with the cross-origin isolation headers set.
 
+COEP is set to `credentialless` (not `require-corp`) so the app can fetch audio from third-party URLs without those hosts having to opt in via `Cross-Origin-Resource-Policy` headers. This keeps `SharedArrayBuffer` available while enabling the "Load from URL" audio source. Trade-off: `credentialless` requires Chrome 96+ / Firefox 119+ / Safari 17.4+.
+
 ## Run
 
 With Docker Compose:

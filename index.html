@@ -76,9 +76,47 @@
             <div class="box">
               <h2>Audio (optional)</h2>
               <input id="audioFile" type="file" accept="audio/*" />
+              <div class="orDivider"><span>or paste a URL</span></div>
+              <div class="urlLoad">
+                <input id="audioUrl" type="url" placeholder="https://example.com/track.mp3" />
+                <button id="btnLoadUrl" class="btn" type="button">Load</button>
+              </div>
+              <div class="urlError" id="audioUrlError" role="alert"></div>
               <div class="hint">
                 Upload a song/beat. Export will mux it into the MP4 (trimmed to bump length).
               </div>
+              <details class="freeMusicSources">
+                <summary>Free music sources</summary>
+                <ul>
+                  <li>
+                    <a href="https://pixabay.com/music/" target="_blank" rel="noopener noreferrer">Pixabay Music</a>
+                    <span class="lic">Pixabay License — commercial OK, no attribution required</span>
+                  </li>
+                  <li>
+                    <a href="https://freemusicarchive.org/" target="_blank" rel="noopener noreferrer">Free Music Archive</a>
+                    <span class="lic">Mixed Creative Commons — check per track</span>
+                  </li>
+                  <li>
+                    <a href="https://ccmixter.org/" target="_blank" rel="noopener noreferrer">ccMixter</a>
+                    <span class="lic">CC-BY / CC-BY-NC — remix-friendly</span>
+                  </li>
+                  <li>
+                    <a href="https://musopen.org/music/" target="_blank" rel="noopener noreferrer">Musopen</a>
+                    <span class="lic">Public domain classical</span>
+                  </li>
+                  <li>
+                    <a href="https://archive.org/details/audio" target="_blank" rel="noopener noreferrer">Internet Archive Audio</a>
+                    <span class="lic">Mixed — check per track</span>
+                  </li>
+                  <li>
+                    <a href="https://www.jamendo.com/" target="_blank" rel="noopener noreferrer">Jamendo</a>
+                    <span class="lic">Creative Commons — attribution + non-commercial by default</span>
+                  </li>
+                </ul>
+                <p class="hint">
+                  Paste a direct link to an audio file (e.g. an .mp3 URL). Some sites hide the direct URL behind a player — right-click the download button and copy the link.
+                </p>
+              </details>
               <audio id="audioPlayer" controls></audio>
             </div>
 

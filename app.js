@@ -506,13 +506,24 @@ async function loadAudioFromUrl(rawUrl, signal) {
 let urlLoadInFlight = false;
 let urlLoadAbort = null;
 
+const URL_LOAD_BUTTON_LABEL = 'Load';
+
 // Cancel any in-flight URL load. Called when the user changes source another way
 // (picks a file, edits the URL) so the older fetch can't resolve and clobber the
-// newer selection.
+// newer selection. Also resets the loader UI so the button doesn't stay stuck
+// in the "Loading…" / disabled state — the awaited handler will see the null
+// urlLoadAbort and skip its own reset.
 function cancelInFlightUrlLoad() {
   if (urlLoadAbort) {
     urlLoadAbort.abort();
     urlLoadAbort = null;
+  }
+  if (urlLoadInFlight) {
+    urlLoadInFlight = false;
+    if (btnLoadUrl) {
+      btnLoadUrl.disabled = false;
+      btnLoadUrl.textContent = URL_LOAD_BUTTON_LABEL;
+    }
   }
 }
 
@@ -528,7 +539,6 @@ async function handleLoadUrlClick() {
   const controller = urlLoadAbort;
   clearAudioUrlError();
   btnLoadUrl.disabled = true;
-  const prevLabel = btnLoadUrl.textContent;
   btnLoadUrl.textContent = 'Loading…';
   try {
     const file = await loadAudioFromUrl(raw, controller.signal);
@@ -539,13 +549,14 @@ async function handleLoadUrlClick() {
     if (err?.name === 'AbortError' || controller.signal.aborted) return; // superseded
     showAudioUrlError(err?.message || 'Failed to load that URL.');
   } finally {
-    // Only reset UI state if THIS load is still the current one; otherwise
-    // a newer load already owns the button/spinner state.
+    // Only reset UI state if THIS load is still the current one. If a canceller
+    // set urlLoadAbort to null, that canceller already reset the UI — bail here
+    // to avoid double-reset. If a newer load already owns the state, don't stomp.
     if (urlLoadAbort === controller) {
       urlLoadInFlight = false;
       urlLoadAbort = null;
       btnLoadUrl.disabled = false;
-      btnLoadUrl.textContent = prevLabel;
+      btnLoadUrl.textContent = URL_LOAD_BUTTON_LABEL;
     }
   }
 }

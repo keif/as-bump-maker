@@ -464,9 +464,6 @@ async function loadAudioFromUrl(rawUrl) {
 
   const blob = await res.blob();
   const type = blob.type || res.headers.get('content-type') || '';
-  if (!type.startsWith('audio/') && !type.startsWith('video/')) {
-    throw new Error(`That URL doesn’t look like audio (got ${type || 'unknown type'}).`);
-  }
 
   // Derive a filename from the URL path so ffmpeg gets a sensible extension.
   let name = 'audio';
@@ -476,15 +473,30 @@ async function loadAudioFromUrl(rawUrl) {
   } catch {
     // fall through
   }
+
+  // Content-Type is unreliable — many CDNs serve audio as application/octet-stream
+  // or omit the header entirely. Accept if MIME is audio/video OR the URL path
+  // has a known audio extension. ffmpeg / the <audio> element will reject
+  // anything that isn't actually decodable.
+  const looksLikeAudio = /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus|weba|webm)(\?|#|$)/i.test(url.pathname);
+  const mimeIsMedia = type.startsWith('audio/') || type.startsWith('video/');
+  if (!mimeIsMedia && !looksLikeAudio) {
+    throw new Error(`That URL doesn’t look like audio (got ${type || 'unknown type'}).`);
+  }
+
   return new File([blob], name, { type });
 }
 
+let urlLoadInFlight = false;
+
 async function handleLoadUrlClick() {
+  if (urlLoadInFlight) return;
   const raw = (audioUrl?.value || '').trim();
   if (!raw) {
     showAudioUrlError('Paste an audio URL first.');
     return;
   }
+  urlLoadInFlight = true;
   clearAudioUrlError();
   btnLoadUrl.disabled = true;
   const prevLabel = btnLoadUrl.textContent;
@@ -496,6 +508,7 @@ async function handleLoadUrlClick() {
   } catch (err) {
     showAudioUrlError(err?.message || 'Failed to load that URL.');
   } finally {
+    urlLoadInFlight = false;
     btnLoadUrl.disabled = false;
     btnLoadUrl.textContent = prevLabel;
   }

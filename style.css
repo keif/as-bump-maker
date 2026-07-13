@@ -322,26 +322,20 @@ input:focus,select:focus,textarea:focus{border-color:#3a3a3a}
 }
 
 /* Audio URL loader + sources list */
-.orDivider{
-  display:flex;
-  align-items:center;
-  gap:10px;
-  margin:10px 0 8px;
+/* Matches the app's <label> convention (12px / muted) but with top margin
+   so it visually separates the URL group from the file picker above. */
+.fieldGroupLabel{
+  display:block;
+  margin-top:12px;
+  font-size:12px;
   color:var(--muted);
-  font-size:11px;
-  text-transform:uppercase;
-  letter-spacing:.08em;
-}
-.orDivider::before,
-.orDivider::after{
-  content:"";
-  flex:1;
-  border-top:1px solid var(--border);
 }
 .urlLoad{
+  margin-top:6px;
   display:flex;
   gap:8px;
 }
+/* .urlLoad wraps input + button; the input is 12px like the rest of the form */
 .urlLoad input[type="url"]{
   flex:1;
   font-size:13px;
@@ -403,6 +397,6 @@ input:focus,select:focus,textarea:focus{border-color:#3a3a3a}
 .freeMusicSources .lic{
   display:block;
   color:var(--muted);
-  font-size:11px;
+  font-size:12px;
 }
 .freeMusicSources .hint{ margin-top:8px; }

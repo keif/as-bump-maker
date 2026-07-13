@@ -41,7 +41,7 @@
             <div class="progressWrap"><div id="progressBar"></div></div>
           </div>
 
-          <video id="resultVideo" controls style="display:none;"></video>
+          <video id="resultVideo" controls aria-label="Exported bump video" style="display:none;"></video>
           <a id="downloadLink" download="bump.mp4" style="display:none;">Download</a>
         </div>
 
@@ -75,11 +75,14 @@
           <div class="twoUp">
             <div class="box">
               <h2>Audio (optional)</h2>
-              <input id="audioFile" type="file" accept="audio/*" />
-              <div class="orDivider"><span>or paste a URL</span></div>
+              <label>
+                Audio file
+                <input id="audioFile" type="file" accept="audio/*" />
+              </label>
+              <label for="audioUrl" class="fieldGroupLabel">Or paste a URL</label>
               <div class="urlLoad">
                 <input id="audioUrl" type="url" placeholder="https://example.com/track.mp3" />
-                <button id="btnLoadUrl" class="btn" type="button">Load</button>
+                <button id="btnLoadUrl" class="btn" type="button" aria-label="Load audio from URL">Load</button>
               </div>
               <div class="urlError" id="audioUrlError" role="alert"></div>
               <div class="hint">
@@ -117,7 +120,7 @@
                   Paste a direct link to an audio file (e.g. an .mp3 URL). Some sites hide the direct URL behind a player — right-click the download button and copy the link.
                 </p>
               </details>
-              <audio id="audioPlayer" controls></audio>
+              <audio id="audioPlayer" controls aria-label="Selected audio preview"></audio>
             </div>
 
             <div class="box">

@@ -1,0 +1,36 @@
+# Production deploy: Caddy (TLS + reverse proxy) → app container from GHCR.
+# Run from this directory: `docker compose up -d`.
+# See ./README.md for the full runbook.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3 (QUIC)
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data       # Let's Encrypt certs + state
+      - caddy_config:/config
+    depends_on:
+      - web
+    networks:
+      - proxy
+
+  web:
+    image: ghcr.io/keif/as-bump-maker:latest
+    restart: unless-stopped
+    # No `ports:` on purpose — only Caddy talks to this container, over the
+    # shared docker network. Port 80 inside the container is reachable as
+    # `web:80` from Caddy.
+    networks:
+      - proxy
+
+networks:
+  proxy:
+
+volumes:
+  caddy_data:
+  caddy_config:

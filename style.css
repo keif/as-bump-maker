@@ -360,14 +360,17 @@ input:focus,select:focus,textarea:focus{border-color:#3a3a3a}
   background:var(--panel2);
   padding:8px 12px;
 }
+/* Whole panel reads as "helper info you can expand" — muted body, links
+   are the only elements that break out to full brightness. Matches the
+   design language of <label> and .hint elsewhere in the box. */
 .freeMusicSources > summary{
   cursor:pointer;
   font-size:12px;
-  font-weight:650;
-  color:var(--text);
+  color:var(--muted);
   padding:4px 0;
   list-style:none;
 }
+.freeMusicSources > summary:hover{ color:var(--text); }
 .freeMusicSources > summary::-webkit-details-marker{ display:none; }
 .freeMusicSources > summary::before{
   content:"▸";
@@ -387,9 +390,12 @@ input:focus,select:focus,textarea:focus{border-color:#3a3a3a}
 .freeMusicSources li{
   font-size:12px;
   line-height:1.4;
+  color:var(--muted);
 }
+/* Anchors are the one thing that breaks to primary text color so the
+   clickable target is unambiguous. Underline reinforces it. */
 .freeMusicSources a{
-  color:#e0e0e0;
+  color:var(--text);
   text-decoration:underline;
   text-underline-offset:2px;
 }

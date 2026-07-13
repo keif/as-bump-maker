@@ -28,9 +28,13 @@ Locally (once, before your first deploy):
 git clone https://github.com/keif/as-bump-maker.git
 cd as-bump-maker/deploy
 
-# Edit the Caddyfile — replace {{DOMAIN}} with your hostname:
+# Edit the Caddyfile — replace {{DOMAIN}} with your hostname.
+# Use your editor of choice:
+nano Caddyfile     # or vim, vi, whatever
+
+# Or, if you'd rather do it in one command, this works on Linux (GNU sed).
+# On macOS BSD sed you'd need `sed -i '' ...` — see the note below.
 sed -i 's/{{DOMAIN}}/bump.yourdomain.com/' Caddyfile
-# (or open in your editor of choice)
 
 # Confirm DNS is live BEFORE starting — Caddy tries ACME immediately:
 dig +short bump.yourdomain.com

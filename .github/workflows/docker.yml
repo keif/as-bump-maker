@@ -76,3 +76,18 @@ jobs:
             org.opencontainers.image.licenses=MIT
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Trigger Coolify redeploy
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          COOLIFY_WEBHOOK_URL: ${{ secrets.COOLIFY_WEBHOOK_URL }}
+        run: |
+          if [ -z "$COOLIFY_WEBHOOK_URL" ]; then
+            echo "COOLIFY_WEBHOOK_URL not set — skipping Coolify redeploy trigger."
+            echo "(This is expected if you don't self-host with Coolify. See deploy/README.md.)"
+            exit 0
+          fi
+          echo "Triggering Coolify redeploy..."
+          curl --fail-with-body -sS -X POST "$COOLIFY_WEBHOOK_URL"
+          echo ""
+          echo "Coolify webhook acknowledged."

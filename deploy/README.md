@@ -1,39 +1,79 @@
-# Deploying to a Linux box (Hetzner or similar)
+# Deploying
 
-Runs the bump maker behind Caddy for auto-TLS and HTTPS. Pulls the app image from GHCR, so the box does zero building — every image running here is exactly the one CI built and published.
+Two paths depending on your infra:
 
-## Prerequisites
+- **[Coolify](#coolify)** — if you already run [Coolify](https://coolify.io) (self-hosted PaaS) on your box. ~2 minutes, all in the UI. Coolify handles TLS, reverse proxy, and lifecycle.
+- **[Caddy from scratch](#caddy-from-scratch)** — if you're deploying to a bare Linux box with no PaaS. You get a docker-compose file + Caddyfile in this directory and a runbook.
 
-On the box:
+Both paths pull the same image from GHCR (`ghcr.io/keif/as-bump-maker:latest`), so the "make image public" prerequisite applies to both.
 
-- Docker Engine + the Compose plugin. On Debian/Ubuntu:
-  ```sh
-  curl -fsSL https://get.docker.com | sh
-  ```
-- Ports **80** and **443** open to the internet. If you use Hetzner Cloud Firewall (or any host firewall), allow inbound TCP 80, 443, and UDP 443 (HTTP/3).
-- A DNS **A record** for the hostname you want, pointing at the box's public IPv4. (Optional: an **AAAA record** for IPv6 if the box has one.)
+---
 
-Locally (once, before your first deploy):
+## Prerequisites (both paths)
 
-- **Make the GHCR image public** so the box can pull it without auth. Visit:  
-  <https://github.com/users/keif/packages/container/as-bump-maker/settings>  
-  → scroll to **Danger Zone** → **Change visibility** → **Public** → confirm.  
-  (GitHub's REST API doesn't expose this for user-owned packages; it has to be a UI click.)  
-  Alternatively, keep it private and `docker login ghcr.io` on the box with a personal access token that has `read:packages`. Public is simpler and matches the fact that the source repo is already public.
+1. **Public GHCR image** so the box can pull without auth. Flip visibility here:
+   <https://github.com/users/keif/packages/container/as-bump-maker/settings>
+   → **Danger Zone** → **Change visibility** → **Public** → confirm.
+   (GitHub's REST API doesn't expose this for user-owned packages; must be a UI click. Alternative: keep private and configure a `docker login ghcr.io` on the host with a `read:packages` PAT.)
 
-## First deploy
+2. **DNS A record** for the hostname you want, pointing at your box's public IPv4. Optional AAAA if the box has IPv6.
+
+3. **Ports 80 + 443 (TCP) + 443 (UDP for HTTP/3)** open on the host firewall. If you use Hetzner Cloud Firewall, allow all three.
+
+---
+
+## Coolify
+
+Coolify runs Traefik under the hood for reverse proxy + auto-TLS, so you don't need the Caddyfile / compose bundle from this repo.
+
+### First deploy
+
+1. In Coolify → your project → **+ New Resource** → **Docker Image**.
+2. **Docker Image**: `ghcr.io/keif/as-bump-maker:latest`.
+3. **Domains**: `bump.yourdomain.com` (whatever hostname you set up in DNS).
+4. **Ports Exposes**: `80` — the internal port nginx listens on.
+5. Click **Deploy**.
+
+Coolify pulls the image, wires up Traefik, provisions the TLS cert, and routes traffic. First-time TLS takes ~10-30s. Visit your domain when the deployment says healthy.
+
+The app's nginx sets `Cross-Origin-Opener-Policy`, `Cross-Origin-Embedder-Policy: credentialless`, and `Cross-Origin-Resource-Policy` as response headers. Traefik passes them through unchanged, so `SharedArrayBuffer` (required for ffmpeg-wasm export) works in the browser. If exports hang, check the network tab for those headers on `/index.html`.
+
+### Auto-redeploy on push to main
+
+CI publishes `ghcr.io/keif/as-bump-maker:latest` on every merge to `main`. To have Coolify pull the fresh image without a manual click:
+
+1. In Coolify → your app resource → **Webhooks** tab (naming varies by version — look for "Deployment Webhook" or "Deploy hook").
+2. Copy the deploy URL (contains an embedded auth token — treat it like a secret).
+3. In GitHub → repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**:
+   - Name: `COOLIFY_WEBHOOK_URL`
+   - Value: paste the URL from step 2.
+
+That's it. The Docker workflow already has a step that fires this webhook after every successful GHCR push. If the secret isn't set, the step logs a message and skips — safe for anyone forking this repo who doesn't use Coolify.
+
+### Rollback in Coolify
+
+Coolify has a **Deployments** history per resource. Click a prior deployment → **Redeploy**. Or, pin to a specific image tag in the resource settings (`ghcr.io/keif/as-bump-maker:<sha>` — every merge to `main` publishes an immutable `:<sha>` tag alongside `:latest`).
+
+---
+
+## Caddy from scratch
+
+Use this path if you have a bare Linux box (Hetzner, DigitalOcean, EC2, whatever) with no PaaS in front. You'll run Caddy + the app as two docker-compose services, and Caddy handles TLS + reverse proxy.
+
+### First deploy
 
 ```sh
 # On the box:
+curl -fsSL https://get.docker.com | sh   # if Docker isn't already installed
 git clone https://github.com/keif/as-bump-maker.git
 cd as-bump-maker/deploy
 
 # Edit the Caddyfile — replace {{DOMAIN}} with your hostname.
 # Use your editor of choice:
-nano Caddyfile     # or vim, vi, whatever
+nano Caddyfile   # or vim, vi, whatever
 
 # Or, if you'd rather do it in one command, this works on Linux (GNU sed).
-# On macOS BSD sed you'd need `sed -i '' ...` — see the note below.
+# On macOS BSD sed you'd need `sed -i '' ...` — the -i flag semantics differ.
 sed -i 's/{{DOMAIN}}/bump.yourdomain.com/' Caddyfile
 
 # Confirm DNS is live BEFORE starting — Caddy tries ACME immediately:
@@ -51,9 +91,7 @@ docker compose logs -f caddy
 
 Then visit `https://bump.yourdomain.com` — the app should load with a valid cert.
 
-## Updates
-
-CI publishes `ghcr.io/keif/as-bump-maker:latest` on every merge to `main`. To pick up the newest image:
+### Updates
 
 ```sh
 cd ~/as-bump-maker/deploy
@@ -61,34 +99,31 @@ docker compose pull
 docker compose up -d
 ```
 
-That's a five-second reload — Caddy stays up throughout, and the `web` container is replaced with the new image.
+Five-second reload — Caddy stays up throughout, the `web` container is replaced with the new image.
 
-For an even lower-touch flow, [Watchtower](https://containrrr.dev/watchtower/) can auto-pull and restart when new images land. Not enabled here by default — explicit updates are safer for a hobby box.
+For zero-touch updates, run [Watchtower](https://containrrr.dev/watchtower/) alongside. Not enabled here by default; explicit updates are safer on a hobby box.
 
-## Rollback
+### Rollback
 
-Every merge to `main` also publishes an immutable `:<sha>` tag. To roll back:
+Every merge to `main` publishes an immutable `:<sha>` tag alongside `:latest`. To pin:
 
-```sh
-# Edit docker-compose.yml, change:
-#   image: ghcr.io/keif/as-bump-maker:latest
-# to:
-#   image: ghcr.io/keif/as-bump-maker:<git-sha-of-known-good-commit>
-
-docker compose pull
-docker compose up -d
+```yaml
+# Edit deploy/docker-compose.yml
+services:
+  web:
+    image: ghcr.io/keif/as-bump-maker:<git-sha-of-known-good-commit>
 ```
 
-Then commit the compose change so future deploys stay pinned until you re-flip to `:latest`.
+Then `docker compose pull && docker compose up -d`. Commit the change so future deploys stay pinned until you re-flip to `:latest`.
 
-## What's running
+### What's running
 
-- **`caddy`** — Caddy 2 on alpine. Terminates TLS, reverse-proxies to `web:80`, listens on 80/443 (TCP+UDP). Handles Let's Encrypt automatically. Persists certs in the `caddy_data` volume so restarts don't re-provision.
-- **`web`** — the bump maker app (nginx 1.27-alpine + our static assets). No published port — reachable only from Caddy over the `proxy` docker network. Sets COOP / COEP: credentialless / CORP response headers; Caddy passes them through unchanged, so `SharedArrayBuffer` + ffmpeg-wasm work in the browser.
+- **`caddy`** — Caddy 2 on alpine. Terminates TLS, reverse-proxies to `web:80`, listens on 80/443 (TCP+UDP). Handles Let's Encrypt automatically. Certs persist in the `caddy_data` volume so restarts don't re-provision.
+- **`web`** — the bump maker app (nginx 1.27-alpine + our static assets). No published port — reachable only from Caddy over the `proxy` docker network. Sets COOP / COEP: credentialless / CORP response headers; Caddy passes them through unchanged.
 
-## Adding more sites later
+### Adding more sites later
 
-The Caddyfile pattern scales: each additional site is another block. Example — one bump maker plus another static site:
+Each additional site is another block in the Caddyfile:
 
 ```
 bump.yourdomain.com {
@@ -102,7 +137,7 @@ blog.yourdomain.com {
 
 Add the matching service to `docker-compose.yml` (join the `proxy` network), reload, and Caddy provisions a new cert on the fly.
 
-## Troubleshooting
+### Troubleshooting
 
 **"unable to get initial certificate"** — DNS isn't pointing at the box yet, or the box's port 80 isn't reachable from Let's Encrypt's validators (firewall?). Verify with `dig +short yourdomain.com` and `curl -v http://<box-ip>` from a different machine.
 
